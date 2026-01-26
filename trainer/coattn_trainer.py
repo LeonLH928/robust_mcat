@@ -28,22 +28,26 @@ def train_loop_survival_coattn(epoch, model, loader, optimizer, n_classes, write
     # all_event_times = np.zeros((len(loader)))
     all_risk_wsi_scores = np.zeros((len(loader)))
 
-    for batch_idx, (data_WSI, data_omic1, data_omic2, data_omic3, label) in enumerate(loader):
+    for batch_idx, (data_WSI, data_omic1, data_omic2, data_omic3, data_omic4, data_omic5, data_omic6, label) in enumerate(loader):
         
         data_WSI = data_WSI.to(device)
         data_omic1 = data_omic1.type(torch.FloatTensor).to(device)
         data_omic2 = data_omic2.type(torch.FloatTensor).to(device)
         data_omic3 = data_omic3.type(torch.FloatTensor).to(device)
-        label = label.type(torch.LongTensor).to(device)
+        data_omic4 = data_omic4.type(torch.FloatTensor).to(device)
+        data_omic5 = data_omic5.type(torch.FloatTensor).to(device)
+        data_omic6 = data_omic6.type(torch.FloatTensor).to(device)
+        label = label.type(torch.LongTensor).to(device).view(-1)
         
         global kld_value
         kld_value = args.annealing_agent()
         if args.generator:
-            logits, Y_prob, Y_hat, attention_scores, all_loss  = model(stage=stage, train=True, label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3)
+            logits, Y_prob, Y_hat, attention_scores, all_loss  = model(stage=stage, train=True, label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3, x_omic4=data_omic4, x_omic5=data_omic5, x_omic6=data_omic6)
         else:
-            logits, Y_prob, Y_hat, attention_scores  = model(label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3)
+            logits, Y_prob, Y_hat, attention_scores  = model(label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3, x_omic4=data_omic4, x_omic5=data_omic5, x_omic6=data_omic6)
 
-        survey_loss = loss_fn(Y_hat, label)
+        logits = logits.view(-1, 2)
+        survey_loss = loss_fn(logits, label)
 
         if reg_fn is None:
             loss_reg = 0
@@ -56,7 +60,7 @@ def train_loop_survival_coattn(epoch, model, loader, optimizer, n_classes, write
                   (all_loss['kl_wsi'] + all_loss['kl_omic_componet'] + all_loss['kl_omic'] + all_loss['kl_joint'])*kld_value*0.1
             all_risk_wsi_scores[batch_idx] = all_loss['risk_wsi']
 
-        risk = Y_prob[:, 0].detach().cpu().numpy()
+        risk = Y_prob[0].detach().cpu().numpy()
         all_risk_scores[batch_idx] = risk
         # all_censorships[batch_idx] = c.item()
         # all_event_times[batch_idx] = event_time
@@ -73,7 +77,7 @@ def train_loop_survival_coattn(epoch, model, loader, optimizer, n_classes, write
 
         train_loss += loss.item()
 
-        if (batch_idx + 1) % 100 == 0:
+        if (batch_idx + 1) % 10 == 0:
             train_batch_str = 'batch {}, loss: {:.4f}, label: {}, risk: {:.4f}'.format(
                 batch_idx, loss.item(), label.item(), float(risk))
             with open(os.path.join(args.writer_dir, 'log.txt'), 'a') as f:
@@ -129,7 +133,9 @@ def train_loop_survival_coattn(epoch, model, loader, optimizer, n_classes, write
             writer.add_scalar('train/kl_joint', train_kl_joint, epoch)
 
 
-def validate_survival_coattn(cur, epoch, model, loader, n_classes, early_stopping=None, monitor_cindex=None, writer=None, loss_fn=None, reg_fn=None, lambda_reg=0., results_dir=None, args=None):
+def validate_survival_coattn(cur, epoch, model, loader, n_classes, early_stopping=None, 
+                             monitor_cindex=None, 
+                             writer=None, loss_fn=None, reg_fn=None, lambda_reg=0., results_dir=None, args=None):
     model.eval()
     val_loss_surv, val_loss = 0., 0.
 
@@ -141,21 +147,24 @@ def validate_survival_coattn(cur, epoch, model, loader, n_classes, early_stoppin
     slide_ids = loader.dataset.slide_data['slide_id']
     patient_results = {}
 
-    for batch_idx, (data_WSI, data_omic1, data_omic2, data_omic3, label) in enumerate(loader):
+    for batch_idx, (data_WSI, data_omic1, data_omic2, data_omic3, data_omic4, data_omic5, data_omic6, label) in enumerate(loader):
 
         data_WSI = data_WSI.cuda()
         data_omic1 = data_omic1.type(torch.FloatTensor).cuda()
         data_omic2 = data_omic2.type(torch.FloatTensor).cuda()
         data_omic3 = data_omic3.type(torch.FloatTensor).cuda()
+        data_omic4 = data_omic4.type(torch.FloatTensor).cuda()
+        data_omic5 = data_omic5.type(torch.FloatTensor).cuda()
+        data_omic6 = data_omic6.type(torch.FloatTensor).cuda()
         label = label.type(torch.LongTensor).cuda()
 
         slide_id = slide_ids.iloc[batch_idx]
 
         with torch.no_grad():
             if args.generator:
-                logits, Y_prob, Y_hat, attention_scores, all_loss = model(train=False, label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3)
+                logits, Y_prob, Y_hat, attention_scores, all_loss = model(train=False, label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3, x_omic4=data_omic4, x_omic5=data_omic5, x_omic6=data_omic6)
             else:
-                logits, Y_prob, Y_hat, attention_scores  = model(label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3)
+                logits, Y_prob, Y_hat, attention_scores  = model(label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3,x_omic4=data_omic4, x_omic5=data_omic5, x_omic6=data_omic6)
 
         survey_loss = loss_fn(Y_hat, label)
         if reg_fn is None:
@@ -219,7 +228,7 @@ def validate_survival_coattn_missing(cur, epoch, model, loader, n_classes, early
     slide_ids = loader.dataset.slide_data['slide_id']
     patient_results = {}
 
-    for batch_idx, (data_WSI, data_omic1, data_omic2, data_omic3, label) in enumerate(loader):
+    for batch_idx, (data_WSI, data_omic1, data_omic2, data_omic3, data_omic4, data_omic5, data_omic6, label) in enumerate(loader):
 
         data_WSI = data_WSI.cuda()
         if torch.randn(1) < args.missing_rate:
@@ -230,15 +239,18 @@ def validate_survival_coattn_missing(cur, epoch, model, loader, n_classes, early
         data_omic1 = data_omic1.type(torch.FloatTensor).cuda()
         data_omic2 = data_omic2.type(torch.FloatTensor).cuda()
         data_omic3 = data_omic3.type(torch.FloatTensor).cuda()
+        data_omic4 = data_omic4.type(torch.FloatTensor).cuda()
+        data_omic5 = data_omic5.type(torch.FloatTensor).cuda()
+        data_omic6 = data_omic6.type(torch.FloatTensor).cuda()
         label = label.type(torch.LongTensor).cuda()
 
         slide_id = slide_ids.iloc[batch_idx]
 
         with torch.no_grad():
             if args.generator:
-                logits, Y_prob, Y_hat, attention_scores, all_loss  = model(omic_missing=omic_missing, train=False, label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3)
+                logits, Y_prob, Y_hat, attention_scores, all_loss  = model(omic_missing=omic_missing, train=False, label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3, x_omic4=data_omic4, x_omic5=data_omic5, x_omic6=data_omic6)
             else:
-                logits, Y_prob, Y_hat, attention_scores  = model(label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3)
+                logits, Y_prob, Y_hat, attention_scores  = model(label=label, x_path=data_WSI, x_omic1=data_omic1, x_omic2=data_omic2, x_omic3=data_omic3, x_omic4=data_omic4, x_omic5=data_omic5, x_omic6=data_omic6)
 
         survey_loss = loss_fn(Y_hat, label)
         if reg_fn is None:
@@ -252,7 +264,7 @@ def validate_survival_coattn_missing(cur, epoch, model, loader, n_classes, early
         all_risk_scores[batch_idx] = risk
         # all_censorships[batch_idx] = c.cpu().numpy()
         # all_event_times[batch_idx] = event_time
-        patient_results.update({slide_id: {'slide_id': np.array(slide_id), 'risk': risk, 'disc_label': label.item()}})
+        patient_results.update({slide_id: {'slide_id': np.array(slide_id), 'risk': risk, 'disc_label': label.item(), 'y_hat': Y_hat}})
 
         val_loss_surv += survey_loss.item()
         val_loss += loss.item()

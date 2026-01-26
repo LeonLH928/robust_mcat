@@ -88,10 +88,10 @@ class Monitor_CIndex:
 
 def train(datasets: tuple, cur: int, args: Namespace):
     """   
-        train for a single fold
+        train for a single fold (Now customized to train on MMIST-ccRCC split.)
     """
-    print('\nTraining Fold {}!'.format(cur))
-    args.writer_dir = os.path.join(args.results_dir, str(cur))
+    print('\nTraining Split!')
+    args.writer_dir = os.path.join(args.results_dir)
     if not os.path.isdir(args.writer_dir):
         os.mkdir(args.writer_dir)
     if args.log_data:
@@ -103,7 +103,7 @@ def train(datasets: tuple, cur: int, args: Namespace):
 
     print('\nInit train/val/test splits...', end=' ')
     train_split, val_split = datasets
-    save_splits(datasets, ['train', 'val'], os.path.join(args.results_dir, 'splits_{}.csv'.format(cur)))
+    save_splits(datasets, ['train', 'val'], os.path.join(args.results_dir, 'split.csv'))
     print('Done!')
     print("Training on {} samples".format(len(train_split)))
     print("Validating on {} samples".format(len(val_split)))
@@ -166,13 +166,13 @@ def train(datasets: tuple, cur: int, args: Namespace):
     else:
         early_stopping = None
     
-    print('\nSetup Validation C-Index Monitor...', end=' ')
-    monitor_cindex = Monitor_CIndex()
-    print('Done!')
+    # print('\nSetup Validation C-Index Monitor...', end=' ')
+    # monitor_cindex = Monitor_CIndex()
+    # print('Done!')
 
-    latest_c_index = 0.
-    max_c_index = 0. 
-    epoch_max_c_index = 0
+    # latest_c_index = 0.
+    # max_c_index = 0. 
+    # epoch_max_c_index = 0
     best_val_dict = {}
 
     print("running with {} {}".format(args.model_type, args.mode))
@@ -184,16 +184,16 @@ def train(datasets: tuple, cur: int, args: Namespace):
             if args.model_type == 'mcat' or args.model_type == 'survpath':
                 from trainer.coattn_trainer import train_loop_survival_coattn, validate_survival_coattn, validate_survival_coattn_missing
                 train_loop_survival_coattn(epoch, model, train_loader, optimizer, args.n_classes, writer, loss_fn, reg_fn, args.lambda_reg, args.gc, args)
-                val_latest, stop = validate_survival_coattn(cur, epoch, model, val_loader, args.n_classes, early_stopping, monitor_cindex, writer, loss_fn, reg_fn, args.lambda_reg, args.results_dir, args)
+                val_latest, stop = validate_survival_coattn(cur, epoch, model, val_loader, args.n_classes, early_stopping, writer, loss_fn, reg_fn, args.lambda_reg, args.results_dir, args)
                 if args.generator:
                     # _, c_index_missing, _ = validate_survival_coattn_missing(cur, epoch, model, val_loader, args.n_classes, early_stopping, monitor_cindex, writer, loss_fn, reg_fn, args.lambda_reg, args.results_dir, args)
-                    val_latest, stop = validate_survival_coattn_missing(cur, epoch, model, val_loader, args.n_classes, early_stopping, monitor_cindex, writer, loss_fn, reg_fn, args.lambda_reg, args.results_dir, args)
+                    val_latest, stop = validate_survival_coattn_missing(cur, epoch, model, val_loader, args.n_classes, early_stopping, writer, loss_fn, reg_fn, args.lambda_reg, args.results_dir, args)
             else:
                 raise NotImplementedError
         else:
             from trainer.mil_trainer import train_loop_survival, validate_survival
             train_loop_survival(epoch, model, train_loader, optimizer, args.n_classes, writer, loss_fn, reg_fn, args.lambda_reg, args.gc, args)
-            val_latest, c_index_val, stop = validate_survival(cur, epoch, model, val_loader, args.n_classes, early_stopping, monitor_cindex, writer, loss_fn, reg_fn, args.lambda_reg, args.results_dir, args)
+            val_latest, c_index_val, stop = validate_survival(cur, epoch, model, val_loader, args.n_classes, early_stopping, writer, loss_fn, reg_fn, args.lambda_reg, args.results_dir, args)
         
         # if c_index_val > max_c_index:
         #     max_c_index = c_index_val
@@ -205,12 +205,13 @@ def train(datasets: tuple, cur: int, args: Namespace):
         best_val_dict = val_latest
 
 
-    if args.log_data:
-        writer.close()
-    print_results = {'result': (max_c_index, epoch_max_c_index)}
-    print("================= summary of fold {} ====================".format(cur))
-    print("result: {:.4f}".format(max_c_index))
-    with open(os.path.join(args.writer_dir, 'log.txt'), 'a') as f:
-        f.write('result: {:.4f}, epoch: {}\n'.format(max_c_index, epoch_max_c_index))
+    # if args.log_data:
+    #     writer.close()
+    # print_results = {'result': (max_c_index, epoch_max_c_index)}
+    # print("================= summary of fold {} ====================".format(cur))
+    # print("result: {:.4f}".format(max_c_index))
+    # with open(os.path.join(args.writer_dir, 'log.txt'), 'a') as f:
+    #     f.write('result: {:.4f}, epoch: {}\n'.format(max_c_index, epoch_max_c_index))
 
-    return best_val_dict, print_results
+    return best_val_dict#, print_results
+    # return None, None

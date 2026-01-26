@@ -158,12 +158,12 @@ settings = {'data_root_dir': args.data_root_dir,
 print('\nLoad Dataset')
 if 'survival' in args.task:
     args.n_classes = 2
-    combined_study = '_'.join(args.task.split('_')[:2])
-
-    if combined_study in ['tcga_blca', 'tcga_brca','tcga_gbmlgg', 'tcga_ucec', 'tcga_luad']:
-        csv_path = './%s/%s_all_clean.csv.zip' % (args.dataset_path, combined_study)
-    else:
-        csv_path = './%s/%s_all_clean.csv' % (args.dataset_path, combined_study)
+    # combined_study = '_'.join(args.task.split('_')[:2])
+    csv_path = '/mmlab_students/storageStudents/nguyenvd/UIT2024_medicare/RunBaseline/RobustMCAT/split/split.csv'
+    # if combined_study in ['tcga_blca', 'tcga_brca','tcga_gbmlgg', 'tcga_ucec', 'tcga_luad']:
+    #     csv_path = './%s/%s_all_clean.csv.zip' % (args.dataset_path, combined_study)
+    # else:
+    #     csv_path = './%s/%s_all_clean.csv' % (args.dataset_path, combined_study)
     dataset = Generic_MIL_Survival_Dataset(csv_path=csv_path,
                                            mode=args.mode,
                                            apply_sig=args.apply_sig,
@@ -172,8 +172,8 @@ if 'survival' in args.task:
                                            seed=args.seed,
                                            print_info=True,
                                            patient_strat=False,
-                                           n_bins=4,
-                                           label_col='survival_months',
+                                        #    n_bins=4,
+                                           label_col='vital_status_12',
                                            ignore=[])
 else:
     raise NotImplementedError
@@ -188,9 +188,9 @@ if not os.path.isdir(args.results_dir):
     os.mkdir(args.results_dir)
 
 if args.generator:
-    exp_code = str(args.exp_code) + '-[decoder_{}]'.format(args.decoder_mode) + '-[w{}]'.format(args.warm_epoch) +'-[alpha{}]'.format(args.alpha) +'-[beta{}]'.format(args.beta) + '_s{}'.format(args.seed)
+    exp_code = 'exp_code' #str(args.exp_code) + '-[decoder_{}]'.format(args.decoder_mode) + '-[w{}]'.format(args.warm_epoch) +'-[alpha{}]'.format(args.alpha) +'-[beta{}]'.format(args.beta) + '_s{}'.format(args.seed)
 else: 
-    exp_code = str(args.exp_code) + '_s{}'.format(args.seed)
+    exp_code = 'exp_code' # str(args.exp_code) + '_s{}'.format(args.seed)
 print("===="*30)
 print("Experiment Name:", exp_code)
 print("===="*30)
@@ -205,12 +205,12 @@ if ('summary_latest.csv' in os.listdir(args.results_dir)) and (not args.overwrit
     sys.exit()
 
 # Sets the absolute path of split_dir
-args.split_dir = os.path.join('./splits', args.which_splits, args.split_dir)
+args.split_dir = os.path.join(args.which_splits, args.split_dir)
 print("split_dir", args.split_dir)
 assert os.path.isdir(args.split_dir)
 settings.update({'split_dir': args.split_dir})
 
-with open(args.results_dir + '/experiment_{}.txt'.format(args.exp_code), 'w') as f:
+with open(args.results_dir + '/experiment.txt', 'w') as f:
     print(settings, file=f)
 f.close()
 
@@ -232,64 +232,65 @@ def main(args):
     else:
         end = args.k_end
 
-    latest_val_cindex = []
-    folds = np.arange(start, end)
+    # latest_val_cindex = []
+    # folds = np.arange(start, end)
     
-    # Start 5-Fold CV Evaluation.
-    run_folds = folds
-    summary_all_folds = {}
-    for i in folds:
-        start_t = timer()
-        seed_torch(args.seed)
-        args.results_pkl_path = os.path.join(
-            args.results_dir, 'split_latest_val_{}_results.pkl'.format(i))
-        if os.path.isfile(args.results_pkl_path) and not args.load_model and not args.overwrite:
-            print("Skipping Split %d" % i)
-            aim_index = np.where(run_folds == i)[0][0]
-            run_folds = np.delete(run_folds, aim_index)
-            continue
-        # Gets the Train + Val Dataset Loader.
-        train_dataset, val_dataset = dataset.return_splits(from_id=False,
-                                                           csv_path='{}/splits_{}.csv'.format(args.split_dir, i))
-        
-        print('training: {}, validation: {}'.format(
-            len(train_dataset), len(val_dataset)))
-        print(len(train_dataset)+len(val_dataset))
-        datasets = (train_dataset, val_dataset)
+    # Start Split Evaluation
+    # run_folds = folds
+    summary_split = {}
+    start_t = timer()
+    seed_torch(args.seed)
+    args.results_pkl_path = os.path.join(
+        args.results_dir, 'split_val_results.pkl')
+    if os.path.isfile(args.results_pkl_path) and not args.load_model and not args.overwrite:
+        print("Skipping Split")
+        # aim_index = np.where(run_folds == i)[0][0]
+        # run_folds = np.delete(run_folds, aim_index)
+        return
+    # Gets the Train + Val Dataset Loader.
+    train_dataset, val_dataset = dataset.return_splits(from_id=False,
+                                                       csv_path=os.path.join(args.split_dir,'split.csv'))
+    
+    print('training: {}, validation: {}'.format(
+        len(train_dataset), len(val_dataset)))
+    print(len(train_dataset)+len(val_dataset))
+    datasets = (train_dataset, val_dataset)
+    print(datasets)
 
-        ### Specify the input dimension size if using genomic features.
-        if 'omic' in args.mode or args.mode == 'cluster' or args.mode == 'graph' or args.mode == 'pyramid':
-            args.omic_input_dim = train_dataset.genomic_features.shape[1]
-            print("Genomic Dimension", args.omic_input_dim)
-        elif 'coattn' in args.mode:
-            args.omic_sizes = train_dataset.omic_sizes
-            print('Genomic Dimensions', args.omic_sizes)
-        else:
-            args.omic_input_dim = 0
-        
-        # Run Train-Val on Survival Task.
-        if args.task_type == 'survival':
-            summary_results, print_results = train(datasets, i, args) ### new
+    ### Specify the input dimension size if using genomic features.
+    if 'omic' in args.mode or args.mode == 'cluster' or args.mode == 'graph' or args.mode == 'pyramid':
+        args.omic_input_dim = train_dataset.genomic_features.shape[1]
+        print("Genomic Dimension", args.omic_input_dim)
+    elif 'coattn' in args.mode:
+        args.omic_sizes = train_dataset.omic_sizes
+        print('Genomic Dimensions', args.omic_sizes)
+    else:
+        args.omic_input_dim = 0
+    
+    # Run Train-Val on Survival Task.
+    if args.task_type == 'survival':
+        # summary_results, print_results = train(datasets, 1, args) ### new
+        summary_results = train(datasets, 1, args) ### new
 
-        # Write Results for Each Split to PKL
-        save_pkl(args.results_pkl_path, summary_results)
-        summary_all_folds[i] = print_results
-        end_t = timer()
-        print('Fold %d Time: %f seconds' % (i, end_t - start_t))
+    # # Write Results for Each Split to PKL
+    # save_pkl(args.results_pkl_path, summary_results)
+    # summary_split = print_results
+    # end_t = timer()
+    # print('Split finished. Time: %f seconds' % (end_t - start_t))
 
-    import logging
-    logger = logging.getLogger()
-    logging.basicConfig(level=logging.INFO)
-    logger.addHandler(logging.FileHandler(os.path.join(args.results_dir,'results.log'), 'w'))
-    logger.info('=============================== summary ===============================')
-    result_cindex = []
-    for i, k in enumerate(summary_all_folds):
-        c_index = summary_all_folds[k]['result'][0]
-        logger.info("Fold {}, C-Index: {:.4f}".format(k, c_index))
-        result_cindex.append(c_index)
-    result_cindex = np.array(result_cindex)
-    logger.info("Avg C-Index of {} folds: {:.3f}, stdp: {:.3f}, stds: {:.3f}".format(
-        len(summary_all_folds), result_cindex.mean(), result_cindex.std(), result_cindex.std(ddof=1)))
+    # import logging
+    # logger = logging.getLogger()
+    # logging.basicConfig(level=logging.INFO)
+    # logger.addHandler(logging.FileHandler(os.path.join(args.results_dir,'results.log'), 'w'))
+    # logger.info('=============================== summary ===============================')
+    # result_cindex = []
+    # for i, k in enumerate(summary_all_folds):
+    #     c_index = summary_all_folds[k]['result'][0]
+    #     logger.info("Fold {}, C-Index: {:.4f}".format(k, c_index))
+    #     result_cindex.append(c_index)
+    # result_cindex = np.array(result_cindex)
+    # logger.info("Avg C-Index of {} folds: {:.3f}, stdp: {:.3f}, stds: {:.3f}".format(
+    #     len(summary_all_folds), result_cindex.mean(), result_cindex.std(), result_cindex.std(ddof=1)))
 
 if __name__ == "__main__":
     start = timer()

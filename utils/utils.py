@@ -72,9 +72,9 @@ def collate_MIL_survival_sig(batch):
     omic6 = torch.cat([item[6] for item in batch], dim = 0).type(torch.FloatTensor)
 
     label = torch.LongTensor([item[7] for item in batch])
-    event_time = np.array([item[8] for item in batch])
-    c = torch.FloatTensor([item[9] for item in batch])
-    return [img, omic1, omic2, omic3, omic4, omic5, omic6, label, event_time, c]
+    # event_time = np.array([item[8] for item in batch])
+    # c = torch.FloatTensor([item[9] for item in batch])
+    return [img, omic1, omic2, omic3, omic4, omic5, omic6, label]
 
 def get_simple_loader(dataset, batch_size=1):
     kwargs = {'num_workers': 4} if device.type == "cuda" else {}

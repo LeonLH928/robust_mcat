@@ -238,8 +238,8 @@ class Robust_MCAT(nn.Module):
 
         ### 12-month Survival Layer
         logits = self.classifier(h)  # Shape: [Batch_Size, 2]
-        Y_prob = torch.softmax(logits, dim=1)  # Probabilities for [Class 0, Class 1]
-        Y_hat = torch.topk(logits, 1, dim=1)[1]  # Predicted class (0 or 1)
+        Y_prob = torch.softmax(logits, dim=0)  # Probabilities for [Class 0, Class 1]
+        Y_hat = torch.topk(logits, 1, dim=0)[1]  # Predicted class (0 or 1)
         attention_scores = {'coattn': A_coattn, 'path': A_path, 'omic': A_omic}
 
         if self.generator:
